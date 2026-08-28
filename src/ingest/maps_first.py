@@ -62,6 +62,126 @@ def _city_from_address(address: str | None, fallback: str) -> str:
     return fallback
 
 
+# --- county re-derivation --------------------------------------------------
+# BUG (fixed here): the old code tagged every listing from a sweep with the
+# sweep's TARGET county, not the listing's real location. For small/rural
+# target cities (e.g. Fountain, Calhoun county) DataForSEO's Maps search
+# often returns loosely-related statewide filler results when local density
+# near the exact town is low (Tampa/Miami/Orlando/Fort Myers companies
+# showing up for a "Fountain FL mold remediation" query) -- those were
+# getting mislabeled county=Calhoun. Fix: derive county from the REAL parsed
+# city (via _city_from_address), not the swept county, and drop listings
+# that can't be reasonably placed near the swept county at all.
+
+# Small supplementary hardcoded list for cities that show up in DataForSEO
+# addresses but aren't well represented in the DBPR companies table (gaps in
+# the primary lookup). Keys are upper-cased city names.
+_SUPPLEMENTAL_CITY_COUNTY = {
+    "FOUNTAIN": "Bay",
+    "BLOUNTSTOWN": "Calhoun",
+    "ALTHA": "Calhoun",
+    "CLARKSVILLE": "Calhoun",
+    "MARIANNA": "Jackson",
+    "PORT ST JOE": "Gulf",
+    "PORT ST. JOE": "Gulf",
+    "WEWAHITCHKA": "Gulf",
+    "APALACHICOLA": "Franklin",
+    "CARRABELLE": "Franklin",
+    "PANAMA CITY": "Bay",
+    "PANAMA CITY BEACH": "Bay",
+    "LYNN HAVEN": "Bay",
+    "SPRINGFIELD": "Bay",
+    "CALLAWAY": "Bay",
+    "YOUNGSTOWN": "Bay",
+}
+
+# Minimal neighbor table for the North Florida counties in scope (config.
+# NORTH_FLORIDA_COUNTIES) -- used by the sanity filter so a listing in an
+# immediately adjacent county isn't dropped as a false positive (a sweep
+# targeting a border town legitimately surfaces neighboring-county
+# businesses). Not exhaustive statewide -- extend if sweeps move outside
+# this list.
+_COUNTY_ADJACENCY = {
+    "Escambia": {"Santa Rosa"},
+    "Santa Rosa": {"Escambia", "Okaloosa"},
+    "Okaloosa": {"Santa Rosa", "Walton"},
+    "Walton": {"Okaloosa", "Holmes", "Washington", "Bay"},
+    "Holmes": {"Walton", "Washington", "Jackson"},
+    "Washington": {"Holmes", "Walton", "Bay", "Jackson", "Calhoun"},
+    "Bay": {"Walton", "Washington", "Calhoun", "Gulf"},
+    "Jackson": {"Holmes", "Washington", "Calhoun"},
+    "Calhoun": {"Jackson", "Washington", "Bay", "Gulf", "Liberty", "Gadsden"},
+    "Gulf": {"Bay", "Calhoun", "Franklin"},
+    "Gadsden": {"Jackson", "Calhoun", "Liberty", "Leon"},
+    "Liberty": {"Calhoun", "Gadsden", "Franklin", "Wakulla", "Leon"},
+    "Franklin": {"Gulf", "Liberty", "Wakulla"},
+    "Leon": {"Gadsden", "Liberty", "Wakulla", "Jefferson"},
+    "Wakulla": {"Liberty", "Franklin", "Leon", "Jefferson"},
+    "Jefferson": {"Leon", "Wakulla", "Madison", "Taylor"},
+    "Madison": {"Jefferson", "Taylor", "Hamilton", "Suwannee"},
+    "Taylor": {"Jefferson", "Madison", "Lafayette", "Dixie"},
+    "Hamilton": {"Madison", "Suwannee", "Columbia"},
+    "Suwannee": {"Hamilton", "Madison", "Lafayette", "Columbia"},
+    "Lafayette": {"Suwannee", "Taylor", "Dixie", "Gilchrist", "Columbia"},
+    "Dixie": {"Taylor", "Lafayette", "Gilchrist", "Levy"},
+    "Columbia": {"Hamilton", "Suwannee", "Lafayette", "Baker", "Union", "Alachua"},
+    "Baker": {"Columbia", "Nassau", "Duval", "Union", "Bradford"},
+    "Nassau": {"Baker", "Duval"},
+    "Duval": {"Nassau", "Baker", "Clay", "St. Johns"},
+    "Union": {"Baker", "Columbia", "Bradford", "Alachua"},
+    "Bradford": {"Baker", "Union", "Alachua", "Clay"},
+    "Clay": {"Duval", "Bradford", "Putnam", "St. Johns"},
+    "St. Johns": {"Duval", "Clay", "Putnam", "Flagler"},
+    "Putnam": {"Clay", "St. Johns", "Bradford", "Alachua", "Marion", "Flagler"},
+    "Alachua": {"Columbia", "Union", "Bradford", "Putnam", "Gilchrist", "Levy", "Marion"},
+    "Gilchrist": {"Lafayette", "Dixie", "Alachua", "Levy"},
+    "Levy": {"Dixie", "Gilchrist", "Alachua", "Marion", "Citrus"},
+}
+
+
+def _load_city_county_lookup(conn) -> dict[str, str]:
+    """Primary lookup: city -> county, built from the existing DBPR
+    `companies` table (~90%+ of FL cities already mapped there). Picks the
+    most frequent non-blank county per city in case of noisy duplicates."""
+    rows = conn.execute(
+        "SELECT upper(trim(city)) AS city, county, COUNT(*) AS n "
+        "FROM companies "
+        "WHERE city IS NOT NULL AND trim(city) != '' "
+        "AND county IS NOT NULL AND trim(county) != '' AND county != 'Out of State' "
+        "GROUP BY upper(trim(city)), county"
+    ).fetchall()
+    best: dict[str, tuple[str, int]] = {}
+    for row in rows:
+        city, county, n = row["city"], row["county"], row["n"]
+        if city not in best or n > best[city][1]:
+            best[city] = (county, n)
+    return {city: county for city, (county, _n) in best.items()}
+
+
+def _resolve_real_county(lookup: dict[str, str], real_city: str, swept_county: str | None) -> str | None:
+    """Resolve the real county for `real_city`: DBPR-derived `lookup` table
+    first, then the small supplemental hardcoded list, falling back to the
+    swept county only if the city can't be resolved at all (better than None
+    for downstream code, but the sanity filter still gets a shot at it)."""
+    key = (real_city or "").strip().upper()
+    return lookup.get(key) or _SUPPLEMENTAL_CITY_COUNTY.get(key) or swept_county
+
+
+def _near_swept_county(real_county: str | None, swept_county: str | None) -> bool:
+    """Sanity check: is `real_county` at or near `swept_county`? True if
+    they're the same county or adjacent per _COUNTY_ADJACENCY. False (=drop)
+    if the listing's real location can't reasonably be tied to the sweep
+    target -- e.g. a Tampa (Hillsborough) listing surfaced by a Fountain
+    (Calhoun) sweep."""
+    if not swept_county:
+        return True  # no target county to sanity-check against -- keep
+    if not real_county:
+        return False  # couldn't resolve the listing's real county at all
+    if real_county.strip().lower() == swept_county.strip().lower():
+        return True
+    return real_county in _COUNTY_ADJACENCY.get(swept_county, set())
+
+
 def sweep_city(conn, city: str, county: str | None = None, provider: str = "dataforseo",
                trade_queries: list[str] | None = None) -> list[dict]:
     """Sweep all trade categories for `city`, dedupe by place_id, upsert each
@@ -82,15 +202,24 @@ def sweep_city(conn, city: str, county: str | None = None, provider: str = "data
                 sources[place_id] = set()
             sources[place_id].add(trade_query)
 
+    city_county_lookup = _load_city_county_lookup(conn)
     touched = []
+    dropped = 0
     for place_id, listing in merged.items():
         categories = ",".join(sorted(sources[place_id]))
         hours = listing.get("hours")
+        real_city = _city_from_address(listing.get("address"), city)
+        real_county = _resolve_real_county(city_county_lookup, real_city, county)
+
+        if not _near_swept_county(real_county, county):
+            dropped += 1
+            continue  # e.g. a Tampa listing surfaced by a Fountain/Calhoun sweep -- mislabeled, drop
+
         fields = dict(
             name=listing.get("title"),
             address=listing.get("address"),
-            city=_city_from_address(listing.get("address"), city),
-            county=county,
+            city=real_city,
+            county=real_county,
             zip=listing.get("zip") or listing.get("zip_code"),
             phone=listing.get("phone"),
             website=listing.get("website"),
@@ -104,6 +233,10 @@ def sweep_city(conn, city: str, county: str | None = None, provider: str = "data
         )
         row_id = db.upsert_maps_company(conn, place_id, **fields)
         touched.append({"id": row_id, "place_id": place_id, **fields})
+
+    if dropped:
+        print(f"[maps_first] sweep_city({city!r}, county={county!r}): dropped {dropped} of "
+              f"{len(merged)} listings as out-of-area (kept {len(touched)})")
     return touched
 
 
