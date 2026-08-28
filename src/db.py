@@ -40,7 +40,73 @@ CREATE TABLE IF NOT EXISTS api_cache (
 CREATE INDEX IF NOT EXISTS idx_companies_state ON companies(state);
 CREATE INDEX IF NOT EXISTS idx_companies_status ON companies(status);
 CREATE INDEX IF NOT EXISTS idx_companies_franchise ON companies(franchise_flag);
+
+CREATE TABLE IF NOT EXISTS enrichment (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id INTEGER NOT NULL REFERENCES companies(id),
+    place_found INTEGER DEFAULT 0,
+    rating REAL,
+    review_count INTEGER,
+    most_recent_review_date TEXT,
+    categories TEXT,
+    website TEXT,
+    phone TEXT,
+    business_status TEXT,
+    hours_listed TEXT,
+    in_local_pack INTEGER DEFAULT 0,
+    match_confidence TEXT,
+    source TEXT,
+    raw_json TEXT,
+    fetched_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_enrichment_company ON enrichment(company_id);
 """
+
+# Stage 2-5 enrichment columns, added via ALTER since companies table already
+# exists from Stage 1. Idempotent (checks pragma first).
+ENRICH_COLUMNS = {
+    "place_id": "TEXT",
+    "place_found": "INTEGER DEFAULT 0",
+    "match_confidence": "TEXT",
+    "match_source": "TEXT",
+    "places_rating": "REAL",
+    "places_review_count": "INTEGER",
+    "places_website": "TEXT",
+    "places_phone": "TEXT",
+    "places_hours_json": "TEXT",
+    "places_types": "TEXT",
+    "business_status": "TEXT",
+    "in_local_pack": "INTEGER DEFAULT 0",
+    "latest_review_age_months": "INTEGER",
+    "website": "TEXT",
+    "owner_name_found": "TEXT",
+    "owner_confirmed": "INTEGER DEFAULT 0",
+    "email": "TEXT",
+    "email_source": "TEXT",
+    "booking_widget": "INTEGER DEFAULT 0",
+    "chat_widget": "INTEGER DEFAULT 0",
+    "emergency_247": "INTEGER DEFAULT 0",
+    "form_only_contact": "INTEGER DEFAULT 0",
+    "pain_score": "INTEGER",
+    "segment": "TEXT",
+    "score_notes": "TEXT",
+    "enrich_stage": "INTEGER DEFAULT 1",
+}
+
+
+def run_enrich_migrations(conn: sqlite3.Connection | None = None) -> None:
+    own = conn is None
+    conn = conn or get_connection()
+    try:
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(companies)")}
+        for col, coltype in ENRICH_COLUMNS.items():
+            if col not in existing:
+                conn.execute(f"ALTER TABLE companies ADD COLUMN {col} {coltype}")
+        conn.commit()
+    finally:
+        if own:
+            conn.close()
 
 
 def get_connection(db_path: Path | str | None = None) -> sqlite3.Connection:
