@@ -55,7 +55,11 @@ from . import db
 from .clients.dataforseo import DataForSEOClient, DataForSEOError, get_maps_results as dfs_get_maps_results
 from .matching import address_match, looks_like_person_name, name_fuzzy_score
 
-TRADE_QUERIES = ["mold remediation", "mold assessment"]
+TRADE_QUERIES = [
+    "mold remediation", "mold assessment", "mold inspection", "mold testing",
+    "water damage restoration", "restoration company",
+    "fire and water damage restoration", "disaster restoration company",
+]
 
 TOP_COUNTIES = ["Dade", "Miami-Dade", "Broward", "Palm Beach", "Hillsborough", "Orange", "Duval"]
 
