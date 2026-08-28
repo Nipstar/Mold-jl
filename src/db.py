@@ -109,6 +109,50 @@ def run_enrich_migrations(conn: sqlite3.Connection | None = None) -> None:
             conn.close()
 
 
+MAPS_COMPANIES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS maps_companies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    place_id TEXT UNIQUE,
+    name TEXT,
+    address TEXT,
+    city TEXT,
+    county TEXT,
+    zip TEXT,
+    phone TEXT,
+    website TEXT,
+    rating REAL,
+    review_count INTEGER,
+    categories TEXT,
+    business_status TEXT,
+    hours_json TEXT,
+    franchise_flag INTEGER DEFAULT 0,
+    license_verified INTEGER DEFAULT 0,
+    matched_license_number TEXT,
+    matched_principal_name TEXT,
+    match_confidence TEXT,
+    source_sweeps TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_maps_companies_city ON maps_companies(city);
+CREATE INDEX IF NOT EXISTS idx_maps_companies_county ON maps_companies(county);
+CREATE INDEX IF NOT EXISTS idx_maps_companies_license_verified ON maps_companies(license_verified);
+"""
+
+
+def run_maps_companies_migration(conn: sqlite3.Connection | None = None) -> None:
+    """Additive migration for the maps-first pivot. Does not touch companies/
+    enrichment tables. Idempotent (CREATE TABLE/INDEX IF NOT EXISTS)."""
+    own = conn is None
+    conn = conn or get_connection()
+    try:
+        conn.executescript(MAPS_COMPANIES_SCHEMA)
+        conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
 def get_connection(db_path: Path | str | None = None) -> sqlite3.Connection:
     path = Path(db_path) if db_path else config.DB_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -181,6 +225,44 @@ def sample_companies(conn: sqlite3.Connection, n: int = 10) -> list[sqlite3.Row]
     return conn.execute("SELECT * FROM companies ORDER BY id LIMIT ?", (n,)).fetchall()
 
 
+# --- maps_companies -------------------------------------------------------
+def upsert_maps_company(conn: sqlite3.Connection, place_id: str, **fields: Any) -> int:
+    """Insert a new maps_companies row for `place_id`, or update the mutable
+    fields (categories/source_sweeps merge is the caller's job -- pass the
+    already-merged value in) on an existing one. Returns the row id."""
+    existing = conn.execute(
+        "SELECT id FROM maps_companies WHERE place_id = ?", (place_id,)
+    ).fetchone()
+    if existing:
+        if fields:
+            sets = ", ".join(f"{k} = ?" for k in fields)
+            conn.execute(
+                f"UPDATE maps_companies SET {sets} WHERE place_id = ?",
+                (*fields.values(), place_id),
+            )
+            conn.commit()
+        return int(existing["id"])
+    cols = ["place_id", *fields.keys()]
+    marks = ", ".join(["?"] * len(cols))
+    cur = conn.execute(
+        f"INSERT INTO maps_companies ({', '.join(cols)}) VALUES ({marks})",
+        (place_id, *fields.values()),
+    )
+    conn.commit()
+    return int(cur.lastrowid)
+
+
+def find_maps_company_by_place_id(conn: sqlite3.Connection, place_id: str) -> Optional[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM maps_companies WHERE place_id = ?", (place_id,)
+    ).fetchone()
+
+
+def count_maps_companies(conn: sqlite3.Connection) -> int:
+    return conn.execute("SELECT COUNT(*) c FROM maps_companies").fetchone()["c"]
+
+
 if __name__ == "__main__":
     run_migrations()
+    run_maps_companies_migration()
     print(f"Migrations applied. DB at {config.DB_PATH}")

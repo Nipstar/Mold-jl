@@ -46,6 +46,19 @@ EXCLUDE_SECONDARY_STATUSES = {
     "involuntarily-inactive",
 }
 
+# Maps-first pivot Phase 1 scope (see docs/superpowers/specs/
+# 2026-08-28-maps-first-north-florida-design.md). 34 panhandle + north-central
+# counties. Used by src/ingest/maps_first.py to select which DBPR-derived
+# cities to sweep -- not run yet, wired up for a separate follow-on task.
+NORTH_FLORIDA_COUNTIES = [
+    "Escambia", "Santa Rosa", "Okaloosa", "Walton", "Holmes", "Washington",
+    "Bay", "Jackson", "Calhoun", "Gulf", "Gadsden", "Liberty", "Franklin",
+    "Leon", "Wakulla", "Jefferson", "Madison", "Taylor", "Hamilton",
+    "Suwannee", "Lafayette", "Dixie", "Columbia", "Baker", "Nassau", "Duval",
+    "Union", "Bradford", "Clay", "St. Johns", "Putnam", "Alachua",
+    "Gilchrist", "Levy",
+]
+
 STATES = {
     "FL": {
         "name": "Florida",
