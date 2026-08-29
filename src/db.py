@@ -180,6 +180,41 @@ def run_dedup_migration(conn: sqlite3.Connection | None = None) -> None:
             conn.close()
 
 
+MAPS_ENRICH_COLUMNS = {
+    "owner_name_found": "TEXT",
+    "owner_confirmed": "INTEGER DEFAULT 0",
+    "email": "TEXT",
+    "email_source": "TEXT",
+    "booking_widget": "INTEGER DEFAULT 0",
+    "chat_widget": "INTEGER DEFAULT 0",
+    "emergency_247": "INTEGER DEFAULT 0",
+    "form_only_contact": "INTEGER DEFAULT 0",
+    "pain_score": "INTEGER",
+    "segment": "TEXT",
+    "score_notes": "TEXT",
+    "stage3_processed_at": "TEXT",
+    "stage4_processed_at": "TEXT",
+}
+
+
+def run_maps_enrich_migrations(conn: sqlite3.Connection | None = None) -> None:
+    """Additive migration for the Stage 3/4 pivot (see
+    docs/superpowers/specs/2026-08-28-maps-first-north-florida-design.md):
+    website/email enrichment + pain_score now run against maps_companies
+    instead of companies. Adds only columns not already present. Idempotent."""
+    own = conn is None
+    conn = conn or get_connection()
+    try:
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(maps_companies)")}
+        for col, coltype in MAPS_ENRICH_COLUMNS.items():
+            if col not in existing:
+                conn.execute(f"ALTER TABLE maps_companies ADD COLUMN {col} {coltype}")
+        conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
 def get_connection(db_path: Path | str | None = None) -> sqlite3.Connection:
     path = Path(db_path) if db_path else config.DB_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
