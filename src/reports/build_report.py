@@ -34,17 +34,18 @@ FULL_COLUMNS = [
     "franchise_flag", "license_verified", "matched_license_number",
     "matched_principal_name", "match_confidence", "is_duplicate",
     "dup_group_id", "lead_mill_suspect", "category_relevant", "google_category",
+    "primary_service",
     "owner_name_found", "owner_confirmed",
     "email", "email_source", "booking_widget", "chat_widget", "emergency_247",
     "form_only_contact", "pain_score", "segment", "score_notes",
 ]
 
 OUTREACH_COLUMNS = [
-    "name", "owner_name_found", "email", "email_source", "phone", "city",
+    "name", "primary_service", "owner_name_found", "email", "email_source", "phone", "city",
     "county", "website", "rating", "review_count", "pain_score", "segment",
 ]
 OUTREACH_HEADER = [
-    "company", "principal_owner", "email", "email_source", "phone", "city",
+    "company", "primary_service", "principal_owner", "email", "email_source", "phone", "city",
     "county", "website", "rating", "review_count", "pain_score", "segment",
 ]
 

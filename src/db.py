@@ -242,6 +242,30 @@ def run_category_relevance_migration(conn: sqlite3.Connection | None = None) -> 
             conn.close()
 
 
+PRIMARY_SERVICE_COLUMNS = {
+    "primary_service": "TEXT",
+}
+
+
+def run_primary_service_migration(conn: sqlite3.Connection | None = None) -> None:
+    """Additive migration: adds primary_service to maps_companies.
+    Distinguishes mold remediation companies (main JobsLocked pitch) from
+    assessment/inspection-only companies (referral-partner pitch), based on
+    categories/google_category signal. Values: 'remediation' | 'assessment_only'.
+    Idempotent."""
+    own = conn is None
+    conn = conn or get_connection()
+    try:
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(maps_companies)")}
+        for col, coltype in PRIMARY_SERVICE_COLUMNS.items():
+            if col not in existing:
+                conn.execute(f"ALTER TABLE maps_companies ADD COLUMN {col} {coltype}")
+        conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
 def get_connection(db_path: Path | str | None = None) -> sqlite3.Connection:
     path = Path(db_path) if db_path else config.DB_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
