@@ -153,6 +153,33 @@ def run_maps_companies_migration(conn: sqlite3.Connection | None = None) -> None
             conn.close()
 
 
+DEDUP_COLUMNS = {
+    "dup_group_id": "INTEGER",
+    "is_duplicate": "INTEGER DEFAULT 0",
+    "lead_mill_suspect": "INTEGER DEFAULT 0",
+}
+
+
+def run_dedup_migration(conn: sqlite3.Connection | None = None) -> None:
+    """Additive migration: adds dup_group_id/is_duplicate/lead_mill_suspect
+    columns to maps_companies for the Stage-2.5 data-quality pass. Does not
+    delete or overwrite any existing row data. Idempotent."""
+    own = conn is None
+    conn = conn or get_connection()
+    try:
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(maps_companies)")}
+        for col, coltype in DEDUP_COLUMNS.items():
+            if col not in existing:
+                conn.execute(f"ALTER TABLE maps_companies ADD COLUMN {col} {coltype}")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_maps_companies_dup_group_id ON maps_companies(dup_group_id)"
+        )
+        conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
 def get_connection(db_path: Path | str | None = None) -> sqlite3.Connection:
     path = Path(db_path) if db_path else config.DB_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
