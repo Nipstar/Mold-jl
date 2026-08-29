@@ -46,20 +46,44 @@ def _franchise_flag(name: str | None) -> int:
     return int(any(f in upper for f in config.FRANCHISE_NAMES))
 
 
+import re
+
+_STATE_ZIP_RE = re.compile(r"^([A-Z]{2})\s*(\d{5})?(-\d{4})?$")
+
+
+def _parse_address(address: str | None) -> tuple[str | None, str | None]:
+    """Parse (city, state) out of a full Maps address string. The naive
+    approach of always taking comma-segment[1] as the city breaks when the
+    street portion itself contains a comma (e.g. '425 B, Mary Esther Cut Off
+    NW, Fort Walton Beach, FL 32548' -- segment[1] is 'Mary Esther Cut Off
+    NW', a street name, not the city). Instead find the segment matching
+    'STATE ZIP' from the right and take the segment immediately before it as
+    the city -- robust regardless of how many comma-separated street parts
+    precede it."""
+    if not address:
+        return None, None
+    segments = [s.strip() for s in address.split(",") if s.strip()]
+    if len(segments) < 2:
+        return None, None
+    last = segments[-1]
+    m = _STATE_ZIP_RE.match(last)
+    if m:
+        state = m.group(1)
+        city = segments[-2] if len(segments) >= 2 else None
+        return (city or None), state
+    # no recognizable 'STATE ZIP' tail -- fall back to old assumption
+    return segments[1] if len(segments) > 1 else None, None
+
+
 def _city_from_address(address: str | None, fallback: str) -> str:
     """DataForSEO Maps listings carry no separate city field -- only a full
-    address string, e.g. '1514 Roberts Dr Ste 2, Jacksonville Beach, FL
-    32250'. A sweep of city X routinely surfaces nearby-city listings too
-    (e.g. sweeping 'Neptune Beach' returns Jacksonville Beach results), so
-    the swept city is NOT a reliable city value for storage or for the DBPR
-    cross-reference -- parse the real city out of the address's second
-    comma-segment instead, falling back to the swept city only when the
-    address doesn't parse."""
-    if address and address.count(",") >= 2:
-        segment = address.split(",")[1].strip()
-        if segment:
-            return segment.upper()
-    return fallback
+    address string. The swept city is NOT a reliable city value for storage
+    or for the DBPR cross-reference (a sweep of city X routinely surfaces
+    nearby-city listings too), so parse the real city out of the address via
+    _parse_address, falling back to the swept city only when the address
+    doesn't parse at all."""
+    city, _state = _parse_address(address)
+    return city.upper() if city else fallback
 
 
 # --- county re-derivation --------------------------------------------------
@@ -109,11 +133,11 @@ _COUNTY_ADJACENCY = {
     "Holmes": {"Walton", "Washington", "Jackson"},
     "Washington": {"Holmes", "Walton", "Bay", "Jackson", "Calhoun"},
     "Bay": {"Walton", "Washington", "Calhoun", "Gulf"},
-    "Jackson": {"Holmes", "Washington", "Calhoun"},
-    "Calhoun": {"Jackson", "Washington", "Bay", "Gulf", "Liberty", "Gadsden"},
-    "Gulf": {"Bay", "Calhoun", "Franklin"},
-    "Gadsden": {"Jackson", "Calhoun", "Liberty", "Leon"},
-    "Liberty": {"Calhoun", "Gadsden", "Franklin", "Wakulla", "Leon"},
+    "Jackson": {"Holmes", "Washington", "Calhoun", "Gadsden"},
+    "Calhoun": {"Jackson", "Washington", "Bay", "Gulf", "Liberty"},
+    "Gulf": {"Bay", "Calhoun", "Franklin", "Liberty"},
+    "Gadsden": {"Jackson", "Liberty", "Leon"},
+    "Liberty": {"Calhoun", "Gadsden", "Franklin", "Wakulla", "Leon", "Gulf"},
     "Franklin": {"Gulf", "Liberty", "Wakulla"},
     "Leon": {"Gadsden", "Liberty", "Wakulla", "Jefferson"},
     "Wakulla": {"Liberty", "Franklin", "Leon", "Jefferson"},
@@ -160,11 +184,16 @@ def _load_city_county_lookup(conn) -> dict[str, str]:
 
 def _resolve_real_county(lookup: dict[str, str], real_city: str, swept_county: str | None) -> str | None:
     """Resolve the real county for `real_city`: DBPR-derived `lookup` table
-    first, then the small supplemental hardcoded list, falling back to the
-    swept county only if the city can't be resolved at all (better than None
-    for downstream code, but the sanity filter still gets a shot at it)."""
+    first, then the small supplemental hardcoded list. No fallback to
+    `swept_county` -- that used to make _near_swept_county's check
+    self-referential (real_county == swept_county trivially "passes" the
+    adjacency sanity check for any listing whose city failed to resolve,
+    e.g. a garbled/mis-parsed city string), which is exactly how an
+    out-of-area listing slipped through with a false "near" verdict. An
+    unresolved city now stays unresolved (None) and gets dropped by
+    _near_swept_county instead."""
     key = (real_city or "").strip().upper()
-    return lookup.get(key) or _SUPPLEMENTAL_CITY_COUNTY.get(key) or swept_county
+    return lookup.get(key) or _SUPPLEMENTAL_CITY_COUNTY.get(key)
 
 
 def _near_swept_county(real_county: str | None, swept_county: str | None) -> bool:
@@ -208,6 +237,17 @@ def sweep_city(conn, city: str, county: str | None = None, provider: str = "data
     for place_id, listing in merged.items():
         categories = ",".join(sorted(sources[place_id]))
         hours = listing.get("hours")
+        _parsed_city, parsed_state = _parse_address(listing.get("address"))
+
+        # Hard state gate BEFORE any county assignment logic runs. DataForSEO
+        # Maps geo-search can return cross-border results for target cities
+        # near a state line (e.g. a 'Bainbridge, GA' listing surfacing from a
+        # Liberty county, FL sweep since Liberty borders Georgia) -- reject
+        # those outright rather than let them flow into county resolution.
+        if parsed_state and parsed_state != "FL":
+            dropped += 1
+            continue  # out-of-state address -- drop before county logic
+
         real_city = _city_from_address(listing.get("address"), city)
         real_county = _resolve_real_county(city_county_lookup, real_city, county)
 
