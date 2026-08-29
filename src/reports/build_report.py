@@ -33,7 +33,8 @@ FULL_COLUMNS = [
     "website", "rating", "review_count", "categories", "business_status",
     "franchise_flag", "license_verified", "matched_license_number",
     "matched_principal_name", "match_confidence", "is_duplicate",
-    "dup_group_id", "lead_mill_suspect", "owner_name_found", "owner_confirmed",
+    "dup_group_id", "lead_mill_suspect", "category_relevant", "google_category",
+    "owner_name_found", "owner_confirmed",
     "email", "email_source", "booking_widget", "chat_widget", "emergency_247",
     "form_only_contact", "pain_score", "segment", "score_notes",
 ]

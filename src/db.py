@@ -215,6 +215,33 @@ def run_maps_enrich_migrations(conn: sqlite3.Connection | None = None) -> None:
             conn.close()
 
 
+CATEGORY_RELEVANCE_COLUMNS = {
+    "category_relevant": "INTEGER DEFAULT 1",
+    "google_category": "TEXT",
+}
+
+
+def run_category_relevance_migration(conn: sqlite3.Connection | None = None) -> None:
+    """Additive migration: adds category_relevant/google_category to
+    maps_companies. category_relevant flags rows whose real Google Maps
+    category (from cached dataforseo_maps_sweep local_results) is NOT
+    mold/restoration-related -- e.g. home inspectors, general contractors
+    that were swept in as loosely-related filler for a niche/low-density
+    query. Same exclusion convention as is_duplicate/lead_mill_suspect.
+    Idempotent."""
+    own = conn is None
+    conn = conn or get_connection()
+    try:
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(maps_companies)")}
+        for col, coltype in CATEGORY_RELEVANCE_COLUMNS.items():
+            if col not in existing:
+                conn.execute(f"ALTER TABLE maps_companies ADD COLUMN {col} {coltype}")
+        conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
 def get_connection(db_path: Path | str | None = None) -> sqlite3.Connection:
     path = Path(db_path) if db_path else config.DB_PATH
     path.parent.mkdir(parents=True, exist_ok=True)

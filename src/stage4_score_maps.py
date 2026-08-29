@@ -148,10 +148,12 @@ def run(limit: int | None = None, ids: list[int] | None = None) -> dict:
     db.run_maps_companies_migration(conn)
     db.run_dedup_migration(conn)
     db.run_maps_enrich_migrations(conn)
+    db.run_category_relevance_migration(conn)
 
     query = (
         "SELECT * FROM maps_companies "
         "WHERE COALESCE(is_duplicate, 0) != 1 AND COALESCE(lead_mill_suspect, 0) != 1 "
+        "AND COALESCE(category_relevant, 1) != 0 "
         "AND stage3_processed_at IS NOT NULL "
     )
     if ids:
