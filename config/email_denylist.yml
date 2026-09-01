@@ -1,0 +1,45 @@
+# Config for email quality checks (see src/email_quality.py). Placeholder
+# local-parts and denylisted domains that get rejected as 'found'/'guessed'
+# emails -- developer tooling, website-builder error tracking, obvious
+# sample/placeholder addresses. Match local-part as a case-insensitive
+# prefix before @; match domain (and its subdomains) case-insensitively.
+
+placeholder_local_parts:
+  - sample
+  - example
+  - test
+  - user
+  - email
+  - name
+  - yourname
+
+denylist_domains:
+  - sentry.io
+  - sentry.wixpress.com
+  - example.com
+  - domain.com
+  - g.page
+  - wix.com
+  - squarespace.com
+  - godaddy.com
+  - yourdomain.com
+
+# Glob-style patterns (fnmatch) for domains not fully enumerable above.
+denylist_domain_patterns:
+  - "yourdomain*"
+
+# Free-mail providers: emails on these domains are never guessed against a
+# business's own website domain (domain_agrees always True for these).
+free_mail_domains:
+  - gmail.com
+  - yahoo.com
+  - outlook.com
+  - hotmail.com
+  - aol.com
+  - icloud.com
+  - comcast.net
+  - att.net
+  - bellsouth.net
+  - centurylink.net
+  - live.com
+  - pm.me

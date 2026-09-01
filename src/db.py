@@ -340,6 +340,33 @@ def run_lead_mill_migration(conn: sqlite3.Connection | None = None) -> None:
             conn.close()
 
 
+EMAIL_QUALITY_COLUMNS = {
+    "email_verified": "TEXT",
+    "email_verified_at": "TEXT",
+    "email_evidence_url": "TEXT",
+}
+
+
+def run_email_quality_migration(conn: sqlite3.Connection | None = None) -> None:
+    """Additive migration: adds email_verified/email_verified_at/
+    email_evidence_url to maps_companies (email enrichment cleanup, see
+    src/email_quality.py, scripts/backfill_email_quality.py). MX-only
+    verification -- email_verified is 'invalid'/'unknown' only, never
+    'valid'/'catch_all' (those require a live SMTP handshake, deliberately
+    not done). Idempotent."""
+    own = conn is None
+    conn = conn or get_connection()
+    try:
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(maps_companies)")}
+        for col, coltype in EMAIL_QUALITY_COLUMNS.items():
+            if col not in existing:
+                conn.execute(f"ALTER TABLE maps_companies ADD COLUMN {col} {coltype}")
+        conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
 def get_connection(db_path: Path | str | None = None) -> sqlite3.Connection:
     path = Path(db_path) if db_path else config.DB_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
