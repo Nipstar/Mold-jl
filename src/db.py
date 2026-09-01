@@ -266,6 +266,28 @@ def run_primary_service_migration(conn: sqlite3.Connection | None = None) -> Non
             conn.close()
 
 
+LICENSE_CLASS_COLUMNS = {
+    "license_class": "TEXT",
+}
+
+
+def run_license_class_migration(conn: sqlite3.Connection | None = None) -> None:
+    """Additive migration: adds license_class to maps_companies (spec item 9
+    -- see src/license_match.py). Values: 'MRSR' | 'MRSA' | 'both' | 'none'.
+    Idempotent."""
+    own = conn is None
+    conn = conn or get_connection()
+    try:
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(maps_companies)")}
+        for col, coltype in LICENSE_CLASS_COLUMNS.items():
+            if col not in existing:
+                conn.execute(f"ALTER TABLE maps_companies ADD COLUMN {col} {coltype}")
+        conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
 FRANCHISE_BRAND_COLUMNS = {
     "franchise_brand": "TEXT",
     "multi_location_domain": "INTEGER DEFAULT 0",

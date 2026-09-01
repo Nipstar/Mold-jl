@@ -36,6 +36,11 @@ from __future__ import annotations
 import json
 
 from .. import config, db
+from ..license_match import (
+    compute_license_class,
+    get_license_address,
+    primary_service_from_license_type,
+)
 from ..location import classify_location_source, has_street_address, is_out_of_area
 from ..matching import address_match
 from .. import stage2_places
@@ -313,8 +318,20 @@ def _business_status(listing: dict) -> str | None:
 def cross_reference_dbpr(conn, maps_row: dict) -> dict:
     """Reverse of stage2_places.match_company: given a maps_companies row,
     look for an address match among DBPR `companies` in the same city/county.
-    Returns the fields to write back (license_verified, matched_*,
-    match_confidence) -- does not write to the DB itself."""
+    Returns the fields to write back -- does not write to the DB itself.
+
+    On match (license_verified=1), also derives (spec item 9):
+      - primary_service from the license CLASS (MRSR -> remediation, MRSA ->
+        assessment_only), overriding whatever Google-category classification
+        would otherwise apply -- the license is authoritative.
+      - license_class ('MRSR' | 'MRSA' | 'both') for downstream reporting.
+      - owner_name_found/owner_name_source='license' from the licensee name
+        -- always, not only when a scrape had already found some (possibly
+        garbage) owner_name_found text.
+      - address/city/county/zip fallback from the DBPR business address,
+        ONLY when the Maps listing itself has no usable street address
+        (has_street_address=0). location_source is set to 'license_address'
+        so it's distinguishable from an address Maps itself supplied."""
     city = (maps_row.get("city") or "").strip()
     county = (maps_row.get("county") or "").strip()
     query = "SELECT * FROM companies WHERE 1=1"
@@ -329,17 +346,39 @@ def cross_reference_dbpr(conn, maps_row: dict) -> dict:
 
     for cand in candidates:
         if address_match(maps_row.get("address"), cand["address"]):
-            return {
+            license_number = cand["license_number"]
+            principal_name = cand["principal_name"] or cand["licensee_name"]
+            result = {
                 "license_verified": 1,
-                "matched_license_number": cand["license_number"],
-                "matched_principal_name": cand["principal_name"] or cand["licensee_name"],
+                "matched_license_number": license_number,
+                "matched_principal_name": principal_name,
                 "match_confidence": "high",
+                "license_class": compute_license_class(conn, license_number),
+                "owner_name_found": principal_name,
+                "owner_name_source": "license",
             }
+            service = primary_service_from_license_type(cand["license_type"])
+            if service:
+                result["primary_service"] = service
+
+            if not maps_row.get("has_street_address"):
+                dbpr_address = get_license_address(conn, license_number)
+                if dbpr_address:
+                    result.update(
+                        address=dbpr_address["address"],
+                        city=dbpr_address["city"],
+                        county=dbpr_address["county"],
+                        zip=dbpr_address["zip"],
+                        has_street_address=1,
+                        location_source="license_address",
+                    )
+            return result
     return {
         "license_verified": 0,
         "matched_license_number": None,
         "matched_principal_name": None,
         "match_confidence": "none",
+        "license_class": "none",
     }
 
 
@@ -354,6 +393,9 @@ def sweep_and_ingest(cities: list[tuple[str, str]], provider: str = "dataforseo"
     conn = db.get_connection()
     db.run_maps_companies_migration(conn)
     db.run_location_source_migration(conn)
+    db.run_primary_service_migration(conn)
+    db.run_owner_name_source_migration(conn)
+    db.run_license_class_migration(conn)
 
     swept = 0
     verified = 0
