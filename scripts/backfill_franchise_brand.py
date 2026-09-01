@@ -6,8 +6,8 @@ hardening). Pure local computation, no API spend.
 - franchise_flag: derived strictly as (franchise_brand IS NOT NULL)
 - multi_location_domain: 1 if the row's website root domain appears on >=2
   OTHER rows (different place_id) with a non-null root domain, else 0
-- category_relevant: re-run via src.relevance.is_category_relevant(google_category),
-  now denylist-config-driven instead of hardcoded
+- category_relevant: re-run via src.relevance.is_category_relevant(google_category,
+  categories) -- positive mold/restoration match required, denylist as hard override
 """
 from __future__ import annotations
 
@@ -27,7 +27,8 @@ def main() -> None:
     db.run_franchise_brand_migration(conn)
 
     rows = conn.execute(
-        "SELECT id, place_id, name, website, google_category, category_relevant FROM maps_companies"
+        "SELECT id, place_id, name, website, google_category, categories, category_relevant "
+        "FROM maps_companies"
     ).fetchall()
 
     # root domain -> count of distinct place_ids with that domain
@@ -48,7 +49,7 @@ def main() -> None:
         brand = match_franchise_brand(r["name"], r["website"])
         rd = domain_by_row[r["id"]]
         is_multi = 1 if (rd and domain_counts[rd] >= 2) else 0
-        new_relevant = 1 if is_category_relevant(r["google_category"]) else 0
+        new_relevant = 1 if is_category_relevant(r["google_category"], r["categories"]) else 0
         old_relevant = r["category_relevant"]
 
         if brand:

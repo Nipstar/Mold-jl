@@ -28,19 +28,66 @@ def _load_brands() -> list[dict]:
     return data.get("brands", [])
 
 
-def is_category_relevant(google_category: str | None) -> bool:
-    """False if any semicolon-separated component of google_category exactly
-    matches (case-insensitive) a denylisted category. True otherwise
-    (including None -- default relevant)."""
-    if not google_category:
-        return True
+# Positive relevance signal: google_category must actually BE mold/
+# restoration-related, not merely "not on the denylist". Substring match,
+# case-insensitive, against the whole category string.
+POSITIVE_TERMS = [
+    "mold",
+    "restoration",
+    "water damage",
+    "fire damage",
+    "water extraction",
+    "flood",
+    "environmental consultant",
+    "environmental health",
+    "environmental testing",
+    "asbestos testing",
+    "disaster recovery",
+    "remediation",
+]
+
+
+def _has_positive_match(text: str) -> bool:
+    lowered = text.lower()
+    return any(term in lowered for term in POSITIVE_TERMS)
+
+
+def _is_denylisted(google_category: str) -> bool:
     denylist = _load_denylist()
     components = [c.strip().lower() for c in google_category.split(";")]
     for c in components:
         for term in denylist:
             if c == term or term in c.split("/"):
-                return False
-    return True
+                return True
+    return False
+
+
+def is_category_relevant(google_category: str | None, categories: str | None = None) -> bool:
+    """Two-stage check:
+
+    1. POSITIVE match -- google_category must contain a mold/restoration
+       related term (POSITIVE_TERMS). Not being on the denylist is NOT
+       enough on its own -- e.g. 'Auto repair shop' / 'HVAC contractor'
+       have no positive match and are excluded even though neither is
+       denylisted.
+    2. Denylist as a hard override on top of a positive match -- e.g.
+       'Auto restoration service' contains 'restoration' but is
+       denylisted, so the denylist wins and it stays excluded.
+
+    If google_category is null/empty, fall back to `categories` (the
+    search-sweep terms the row was found under): relevant only if one of
+    those terms is itself mold/restoration-related. Never default to True
+    blindly."""
+    if google_category:
+        if not _has_positive_match(google_category):
+            return False
+        if _is_denylisted(google_category):
+            return False
+        return True
+
+    if categories and _has_positive_match(categories):
+        return True
+    return False
 
 
 def _root_domain(website: str) -> str | None:
