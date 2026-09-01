@@ -74,7 +74,7 @@ from __future__ import annotations
 
 import json
 
-from . import db
+from . import db, finalize
 from .data_confidence import compute_data_confidence, compute_priority_rank
 
 
@@ -178,9 +178,14 @@ def run(limit: int | None = None, ids: list[int] | None = None) -> dict:
         )
         dist[segment] += 1
     conn.commit()
+
+    # Final pass: include_in_outreach set for EVERY row (scored or not),
+    # since excluded rows need include_in_outreach=false for the excluded
+    # CSV export (see src/finalize.py).
+    finalize_summary = finalize.run(conn=conn)
     conn.close()
 
-    summary = {"scored": len(rows), "segment_distribution": dist}
+    summary = {"scored": len(rows), "segment_distribution": dist, "finalize": finalize_summary}
     print(json.dumps(summary, indent=2))
     return summary
 

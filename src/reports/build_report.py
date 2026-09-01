@@ -26,6 +26,10 @@ from src.reports import brand  # noqa: E402
 
 from jinja2 import Template  # noqa: E402
 
+sys.path.insert(0, str(ROOT))
+from src import finalize  # noqa: E402
+from src.reports.export_final import export_all  # noqa: E402
+
 OUT_DIR = GEO_PROSPECTING / "claim-site" / "dist" / "report" / "jl-mold-fl"
 
 FULL_COLUMNS = [
@@ -103,10 +107,15 @@ def build_stats(rows: list[sqlite3.Row]) -> dict:
     dup_count = sum(1 for r in rows if r["is_duplicate"])
     lead_mill_count = sum(1 for r in rows if r["lead_mill_suspect"])
     email_count = sum(1 for r in rows if r["email"])
-    top_prospects = sorted(scored, key=lambda r: (r["pain_score"] or 0), reverse=True)[:20]
+    included = [r for r in rows if r["include_in_outreach"]]
+    top_prospects = sorted(
+        included, key=lambda r: (r["priority_rank"] or 0, r["pain_score"] or 0), reverse=True
+    )[:20]
     return {
         "total": total,
         "scored": len(scored),
+        "included": len(included),
+        "excluded": total - len(included),
         "counties": counties,
         "county_count": len(counties),
         "seg_counts": seg_counts,
@@ -182,7 +191,9 @@ footer { margin-top: 60px; padding-top: 20px; border-top: 2px solid var(--charco
   <h2>Downloads</h2>
   <div class="downloads">
     <a class="dl" href="./jl-mold-fl-full.csv">Full CSV — all {{ stats.total }} rows, all columns (incl. emails)</a>
-    <a class="dl alt" href="./jl-mold-fl-outreach.csv">Outreach CSV — {{ stats.scored }} scored rows, sorted by pain score</a>
+    <a class="dl alt" href="./jl-mold-fl-outreach.csv">Outreach CSV — {{ stats.included }} outreach-ready rows, sorted by priority rank</a>
+    <a class="dl outline" href="./jl-mold-fl-excluded.csv">Excluded CSV — {{ stats.excluded }} rows with exclusion reasons</a>
+    <a class="dl outline" href="./jl-mold-fl-qa.md">QA report (markdown)</a>
     <a class="dl outline" href="./jl-mold-fl-summary.pdf">PDF — this summary page</a>
   </div>
 
@@ -251,12 +262,21 @@ footer { margin-top: 60px; padding-top: 20px; border-top: 2px solid var(--charco
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
-    rows = fetch_rows(conn)
+    conn.row_factory = sqlite3.Row
 
-    n_full = write_full_csv(rows, OUT_DIR / "jl-mold-fl-full.csv")
-    n_outreach = write_outreach_csv(rows, OUT_DIR / "jl-mold-fl-outreach.csv")
+    # Stage I: recompute include_in_outreach, then write the full 4-file
+    # export contract (full/outreach/excluded/qa.md) via src.finalize +
+    # src.reports.export_final -- single source of truth, not duplicated
+    # CSV-writing logic here.
+    finalize.run(conn)
+    export_stats = export_all(conn, OUT_DIR, vertical_region="mold-fl")
+
+    rows = fetch_rows(conn)
     stats = build_stats(rows)
     conn.close()
+
+    n_full = export_stats["total"]
+    n_outreach = export_stats["outreach"]
 
     html = Template(TEMPLATE).render(
         stats=stats,

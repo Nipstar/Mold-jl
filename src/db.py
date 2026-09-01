@@ -435,6 +435,29 @@ def run_data_confidence_migration(conn: sqlite3.Connection | None = None) -> Non
             conn.close()
 
 
+INCLUDE_IN_OUTREACH_COLUMNS = {
+    "include_in_outreach": "INTEGER",
+}
+
+
+def run_include_in_outreach_migration(conn: sqlite3.Connection | None = None) -> None:
+    """Additive migration: adds include_in_outreach to maps_companies (Stage
+    I -- final export contract, see src/finalize.py). Boolean (0/1) computed
+    for EVERY row (not just scored ones) -- excluded rows get 0 so the
+    excluded.csv export has something to key off. Idempotent."""
+    own = conn is None
+    conn = conn or get_connection()
+    try:
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(maps_companies)")}
+        for col, coltype in INCLUDE_IN_OUTREACH_COLUMNS.items():
+            if col not in existing:
+                conn.execute(f"ALTER TABLE maps_companies ADD COLUMN {col} {coltype}")
+        conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
 def get_connection(db_path: Path | str | None = None) -> sqlite3.Connection:
     path = Path(db_path) if db_path else config.DB_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
