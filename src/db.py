@@ -316,6 +316,30 @@ def run_location_source_migration(conn: sqlite3.Connection | None = None) -> Non
             conn.close()
 
 
+LEAD_MILL_COLUMNS = {
+    "lead_mill_score": "INTEGER",
+    "lead_mill_reasons": "TEXT",
+}
+
+
+def run_lead_mill_migration(conn: sqlite3.Connection | None = None) -> None:
+    """Additive migration: adds lead_mill_score/lead_mill_reasons to
+    maps_companies (Stage 2.5 part 2 -- see src/lead_mill.py).
+    lead_mill_suspect already exists from DEDUP_COLUMNS/run_dedup_migration;
+    this only adds the score/reasons detail columns feeding it. Idempotent."""
+    own = conn is None
+    conn = conn or get_connection()
+    try:
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(maps_companies)")}
+        for col, coltype in LEAD_MILL_COLUMNS.items():
+            if col not in existing:
+                conn.execute(f"ALTER TABLE maps_companies ADD COLUMN {col} {coltype}")
+        conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
 def get_connection(db_path: Path | str | None = None) -> sqlite3.Connection:
     path = Path(db_path) if db_path else config.DB_PATH
     path.parent.mkdir(parents=True, exist_ok=True)

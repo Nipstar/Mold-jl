@@ -1,0 +1,34 @@
+# Config for lead-mill suspect detection (see src/lead_mill.py).
+# lead_mill_score is 0-100, weighted sum of signals below. threshold is the
+# score at/above which lead_mill_suspect=True.
+threshold: 40
+
+# TLDs cheap enough that a real established mold/restoration business
+# rarely uses them -- common on throwaway lead-mill sites spun up fast.
+throwaway_tlds:
+  - .online
+  - .space
+  - .store
+  - .site
+  - .xyz
+
+# Domains that are website builders / social profiles, not an owned business
+# domain. Having ONE of these as the ONLY web presence is a signal (a real
+# business usually has its own domain by the time it has any reviews), not
+# a hard veto -- some legit small/new shops genuinely only have a Facebook
+# page or a Google site. Feeds the score, doesn't disqualify by itself.
+builder_social_domains:
+  - lovable.app
+  - ueniweb.com
+  - jobbersites.com
+  - wixsite.com
+  - sites.google.com
+  - g.page
+  - instagram.com
+  - facebook.com
+
+# Generic-agency name prefixes seen in real data -- short, meaningless
+# letter codes glued to an otherwise generic "<Trade> <City>" name. Extend
+# as new patterns are found in the sweep data.
+generic_prefixes:
+  - "ZND-"

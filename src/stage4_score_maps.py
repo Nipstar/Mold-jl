@@ -154,6 +154,7 @@ def run(limit: int | None = None, ids: list[int] | None = None) -> dict:
         "SELECT * FROM maps_companies "
         "WHERE COALESCE(is_duplicate, 0) != 1 AND COALESCE(lead_mill_suspect, 0) != 1 "
         "AND COALESCE(category_relevant, 1) != 0 "
+        "AND COALESCE(out_of_area, 0) != 1 "
         "AND stage3_processed_at IS NOT NULL "
     )
     if ids:
