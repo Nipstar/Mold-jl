@@ -291,6 +291,31 @@ def run_franchise_brand_migration(conn: sqlite3.Connection | None = None) -> Non
             conn.close()
 
 
+LOCATION_SOURCE_COLUMNS = {
+    "has_street_address": "INTEGER",
+    "location_source": "TEXT",
+    "out_of_area": "INTEGER DEFAULT 0",
+}
+
+
+def run_location_source_migration(conn: sqlite3.Connection | None = None) -> None:
+    """Additive migration: adds has_street_address/location_source/out_of_area
+    to maps_companies (Stage B: fixes rows with no street address getting
+    the search-grid-point's city/county assigned -- see src/location.py).
+    Idempotent."""
+    own = conn is None
+    conn = conn or get_connection()
+    try:
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(maps_companies)")}
+        for col, coltype in LOCATION_SOURCE_COLUMNS.items():
+            if col not in existing:
+                conn.execute(f"ALTER TABLE maps_companies ADD COLUMN {col} {coltype}")
+        conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
 def get_connection(db_path: Path | str | None = None) -> sqlite3.Connection:
     path = Path(db_path) if db_path else config.DB_PATH
     path.parent.mkdir(parents=True, exist_ok=True)

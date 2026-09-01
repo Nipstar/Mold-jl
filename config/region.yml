@@ -1,0 +1,53 @@
+# Region/config for out-of-area detection (see src/location.py).
+# Target state for this pipeline run.
+target_state: FL
+
+# Area codes covering the north/central FL sweep region. Configurable list --
+# extend if sweep scope grows. An area code outside this list is a signal
+# (not proof by itself) of an out-of-area listing -- combined with
+# has_street_address=false in is_out_of_area().
+target_area_codes:
+  - "850"
+  - "448"
+  - "904"
+  - "352"
+  - "386"
+  - "321"
+
+# County names in scope. Reuses src/config.py NORTH_FLORIDA_COUNTIES (34
+# panhandle + north-central counties).
+target_counties:
+  - Escambia
+  - Santa Rosa
+  - Okaloosa
+  - Walton
+  - Holmes
+  - Washington
+  - Bay
+  - Jackson
+  - Calhoun
+  - Gulf
+  - Gadsden
+  - Liberty
+  - Franklin
+  - Leon
+  - Wakulla
+  - Jefferson
+  - Madison
+  - Taylor
+  - Hamilton
+  - Suwannee
+  - Lafayette
+  - Dixie
+  - Columbia
+  - Baker
+  - Nassau
+  - Duval
+  - Union
+  - Bradford
+  - Clay
+  - St. Johns
+  - Putnam
+  - Alachua
+  - Gilchrist
+  - Levy

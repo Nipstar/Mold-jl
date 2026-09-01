@@ -36,6 +36,7 @@ from __future__ import annotations
 import json
 
 from .. import config, db
+from ..location import classify_location_source, has_street_address, is_out_of_area
 from ..matching import address_match
 from .. import stage2_places
 from ..stage2_places import TRADE_QUERIES, get_city_listings, sweep_city_trade  # noqa: F401 (re-exported for callers)
@@ -75,15 +76,17 @@ def _parse_address(address: str | None) -> tuple[str | None, str | None]:
     return segments[1] if len(segments) > 1 else None, None
 
 
-def _city_from_address(address: str | None, fallback: str) -> str:
+def _city_from_address(address: str | None) -> str | None:
     """DataForSEO Maps listings carry no separate city field -- only a full
-    address string. The swept city is NOT a reliable city value for storage
-    or for the DBPR cross-reference (a sweep of city X routinely surfaces
-    nearby-city listings too), so parse the real city out of the address via
-    _parse_address, falling back to the swept city only when the address
-    doesn't parse at all."""
+    address string. The swept city (search-grid point) is NEVER a reliable
+    stand-in for the listing's real city -- a sweep of city X routinely
+    surfaces nearby-city (or, when address data is thin, wildly distant)
+    listings too. Parse the real city out of the address via _parse_address.
+    Returns None when the address doesn't parse -- callers must leave
+    city/county NULL in that case rather than fake-assigning the grid point
+    (see src/location.py, the has-no-street-address bug fix)."""
     city, _state = _parse_address(address)
-    return city.upper() if city else fallback
+    return city.upper() if city else None
 
 
 # --- county re-derivation --------------------------------------------------
@@ -248,16 +251,26 @@ def sweep_city(conn, city: str, county: str | None = None, provider: str = "data
             dropped += 1
             continue  # out-of-state address -- drop before county logic
 
-        real_city = _city_from_address(listing.get("address"), city)
-        real_county = _resolve_real_county(city_county_lookup, real_city, county)
+        address = listing.get("address")
+        addr_has_street = has_street_address(address)
+        real_city = _city_from_address(address)
 
-        if not _near_swept_county(real_county, county):
-            dropped += 1
-            continue  # e.g. a Tampa listing surfaced by a Fountain/Calhoun sweep -- mislabeled, drop
+        # BUG FIX: never fall back to the swept grid point's city when the
+        # address doesn't parse -- that produced nonsense like 'Water Mold
+        # Fire Restoration of Miami' tagged with McDavid/Escambia (the sweep
+        # target), not Miami. Leave city/county NULL and record
+        # location_source instead when there's no real city to resolve.
+        if real_city:
+            real_county = _resolve_real_county(city_county_lookup, real_city, county)
+            if not _near_swept_county(real_county, county):
+                dropped += 1
+                continue  # e.g. a Tampa listing surfaced by a Fountain/Calhoun sweep -- mislabeled, drop
+        else:
+            real_county = None
 
         fields = dict(
             name=listing.get("title"),
-            address=listing.get("address"),
+            address=address,
             city=real_city,
             county=real_county,
             zip=listing.get("zip") or listing.get("zip_code"),
@@ -270,6 +283,11 @@ def sweep_city(conn, city: str, county: str | None = None, provider: str = "data
             hours_json=json.dumps(hours) if hours else None,
             franchise_flag=_franchise_flag(listing.get("title")),
             source_sweeps=categories,
+            has_street_address=int(addr_has_street),
+            location_source=classify_location_source(address, addr_has_street),
+            out_of_area=int(is_out_of_area(
+                listing.get("title"), listing.get("website"), listing.get("phone"), address,
+            )),
         )
         row_id = db.upsert_maps_company(conn, place_id, **fields)
         touched.append({"id": row_id, "place_id": place_id, **fields})
@@ -335,6 +353,7 @@ def sweep_and_ingest(cities: list[tuple[str, str]], provider: str = "dataforseo"
     which cities are in scope."""
     conn = db.get_connection()
     db.run_maps_companies_migration(conn)
+    db.run_location_source_migration(conn)
 
     swept = 0
     verified = 0
