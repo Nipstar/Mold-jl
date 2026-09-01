@@ -75,6 +75,7 @@ from __future__ import annotations
 import json
 
 from . import db
+from .data_confidence import compute_data_confidence, compute_priority_rank
 
 
 def _no_hours_listed(hours_json: str | None) -> bool:
@@ -149,6 +150,7 @@ def run(limit: int | None = None, ids: list[int] | None = None) -> dict:
     db.run_dedup_migration(conn)
     db.run_maps_enrich_migrations(conn)
     db.run_category_relevance_migration(conn)
+    db.run_data_confidence_migration(conn)
 
     query = (
         "SELECT * FROM maps_companies "
@@ -167,9 +169,12 @@ def run(limit: int | None = None, ids: list[int] | None = None) -> dict:
     dist = {"tier1": 0, "tier2": 0, "tier3": 0}
     for row in rows:
         total, segment, sub = score_row(row)
+        confidence = compute_data_confidence(row)
+        priority_rank = compute_priority_rank(total, confidence)
         conn.execute(
-            "UPDATE maps_companies SET pain_score=?, segment=?, score_notes=?, stage4_processed_at=? WHERE id=?",
-            (total, segment, json.dumps(sub), db._now(), row["id"]),
+            "UPDATE maps_companies SET pain_score=?, segment=?, score_notes=?, "
+            "data_confidence=?, priority_rank=?, stage4_processed_at=? WHERE id=?",
+            (total, segment, json.dumps(sub), confidence, priority_rank, db._now(), row["id"]),
         )
         dist[segment] += 1
     conn.commit()

@@ -389,6 +389,30 @@ def run_owner_name_source_migration(conn: sqlite3.Connection | None = None) -> N
             conn.close()
 
 
+DATA_CONFIDENCE_COLUMNS = {
+    "data_confidence": "REAL",
+    "priority_rank": "REAL",
+}
+
+
+def run_data_confidence_migration(conn: sqlite3.Connection | None = None) -> None:
+    """Additive migration: adds data_confidence/priority_rank to
+    maps_companies (see src/data_confidence.py). data_confidence is a
+    0.0-1.0 reliability score; priority_rank = pain_score * data_confidence,
+    computed in src/stage4_score_maps.py. Idempotent."""
+    own = conn is None
+    conn = conn or get_connection()
+    try:
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(maps_companies)")}
+        for col, coltype in DATA_CONFIDENCE_COLUMNS.items():
+            if col not in existing:
+                conn.execute(f"ALTER TABLE maps_companies ADD COLUMN {col} {coltype}")
+        conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
 def get_connection(db_path: Path | str | None = None) -> sqlite3.Connection:
     path = Path(db_path) if db_path else config.DB_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
