@@ -1,0 +1,84 @@
+# Canonical franchise/national-chain brand list for franchise_brand matching
+# (Stage A pipeline hardening, see docs/superpowers/specs). Each entry:
+#   name: canonical brand name stored in maps_companies.franchise_brand
+#   name_substrings: case-insensitive whole-word/phrase substrings matched
+#     against the business name. Must be specific to the brand -- never a
+#     generic industry word like "restoration" alone.
+#   domains: website root domains (no protocol/www/path) matched against the
+#     row's website root domain.
+brands:
+  - name: SERVPRO
+    name_substrings: ["SERVPRO"]
+    domains: ["servpro.com"]
+  - name: ServiceMaster
+    name_substrings: ["SERVICEMASTER"]
+    domains: ["servicemaster.com", "servicemasterrestore.com", "servicemasterclean.com"]
+  - name: Paul Davis
+    name_substrings: ["PAUL DAVIS"]
+    domains: ["pauldavis.com"]
+  - name: PuroClean
+    name_substrings: ["PUROCLEAN"]
+    domains: ["puroclean.com"]
+  - name: BELFOR
+    name_substrings: ["BELFOR"]
+    domains: ["belfor.com", "belforusa.com"]
+  - name: FIRST ONSITE
+    name_substrings: ["FIRST ONSITE"]
+    domains: ["firstonsite.com"]
+  - name: 911 Restoration
+    name_substrings: ["911 RESTORATION"]
+    domains: ["911restoration.com"]
+  - name: Rainbow Restoration
+    name_substrings: ["RAINBOW RESTORATION", "RAINBOW INTERNATIONAL"]
+    domains: ["rainbowrestores.com", "rainbowintl.com"]
+  - name: All Dry Services
+    name_substrings: ["ALL DRY SERVICES", "ALL DRY"]
+    domains: ["alldryusa.com"]
+  - name: RestoPros
+    name_substrings: ["RESTOPROS"]
+    domains: ["restopros.com"]
+  - name: Restoration 1
+    name_substrings: ["RESTORATION 1"]
+    domains: ["restoration1.com"]
+  - name: Rytech
+    name_substrings: ["RYTECH"]
+    domains: ["rytechinc.com"]
+  - name: 1-800 Water Damage
+    name_substrings: ["1-800 WATER DAMAGE", "1-800-WATER DAMAGE", "1800WATERDAMAGE"]
+    domains: ["1800waterdamage.com"]
+  - name: Voda
+    name_substrings: ["VODA CLEANING", "VODA RESTORATION", "VODA"]
+    domains: ["vodacr.com"]
+  - name: United Water Restoration Group
+    name_substrings: ["UNITED WATER RESTORATION"]
+    domains: ["unitedwaterrestoration.com"]
+  - name: Pure Maintenance
+    name_substrings: ["PURE MAINTENANCE"]
+    domains: ["puremaintenance.com"]
+  - name: Cotton GDS
+    name_substrings: ["COTTON GDS", "COTTON GLOBAL DISASTER SOLUTIONS", "COTTON HOLDINGS"]
+    domains: ["cottongds.com", "cottonholdings.com"]
+  - name: DKI
+    name_substrings: ["DKI"]
+    domains: ["dki.com", "dkiservices.com"]
+  - name: AdvantaClean
+    name_substrings: ["ADVANTACLEAN"]
+    domains: ["advantaclean.com"]
+  - name: Best Option Restoration
+    name_substrings: ["BEST OPTION RESTORATION"]
+    domains: ["bestoptionrestoration.com"]
+  - name: OneRestore
+    name_substrings: ["ONERESTORE", "ONE RESTORE"]
+    domains: ["onerestore.com"]
+  - name: Kustom Disaster Restoration
+    name_substrings: ["KUSTOM DISASTER RESTORATION", "KUSTOM RESTORATION"]
+    domains: ["kustomdisaster.com"]
+  - name: Alpha Foundations
+    name_substrings: ["ALPHA FOUNDATIONS", "AFS FOUNDATION"]
+    domains: ["alphafoundations.com"]
+  - name: Water Mold Fire Restoration
+    name_substrings: ["WATER MOLD FIRE RESTORATION", "WATER MOLD FIRE"]
+    domains: ["watermoldfire.net"]
+  - name: Five Star Restoration
+    name_substrings: ["FIVE STAR RESTORATION"]
+    domains: ["fivestarresto.com"]

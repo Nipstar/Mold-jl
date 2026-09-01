@@ -1,0 +1,20 @@
+# google_category values that force category_relevant=0 regardless of any
+# other signal (Stage A pipeline hardening). Matched per semicolon-separated
+# category component, case-insensitive, exact value match (not substring).
+denylist:
+  - "Auto restoration service"
+  - "Computer repair service"
+  - "Roofing contractor"
+  - "Pest control service"
+  - "Septic system service"
+  - "Towing service"
+  - "Appliance store"
+  - "Pressure washing service"
+  - "Phone repair service"
+  - "Welder"
+  - "Metal fabricator"
+  - "Handyman"
+  - "Painter"
+  - "Electrician"
+  - "Truck repair shop"
+  - "Auto body shop"

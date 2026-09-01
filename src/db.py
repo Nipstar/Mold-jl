@@ -266,6 +266,31 @@ def run_primary_service_migration(conn: sqlite3.Connection | None = None) -> Non
             conn.close()
 
 
+FRANCHISE_BRAND_COLUMNS = {
+    "franchise_brand": "TEXT",
+    "multi_location_domain": "INTEGER DEFAULT 0",
+}
+
+
+def run_franchise_brand_migration(conn: sqlite3.Connection | None = None) -> None:
+    """Additive migration: adds franchise_brand/multi_location_domain to
+    maps_companies (Stage A pipeline hardening, config-driven brand
+    matching -- see src/relevance.py, config/brands.yml). franchise_brand
+    is the canonical matched brand name or NULL; franchise_flag is derived
+    from it (franchise_flag = franchise_brand IS NOT NULL). Idempotent."""
+    own = conn is None
+    conn = conn or get_connection()
+    try:
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(maps_companies)")}
+        for col, coltype in FRANCHISE_BRAND_COLUMNS.items():
+            if col not in existing:
+                conn.execute(f"ALTER TABLE maps_companies ADD COLUMN {col} {coltype}")
+        conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
 def get_connection(db_path: Path | str | None = None) -> sqlite3.Connection:
     path = Path(db_path) if db_path else config.DB_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
