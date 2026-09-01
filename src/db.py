@@ -367,6 +367,28 @@ def run_email_quality_migration(conn: sqlite3.Connection | None = None) -> None:
             conn.close()
 
 
+OWNER_NAME_SOURCE_COLUMNS = {
+    "owner_name_source": "TEXT",
+}
+
+
+def run_owner_name_source_migration(conn: sqlite3.Connection | None = None) -> None:
+    """Additive migration: adds owner_name_source to maps_companies (see
+    src/owner_name.py, scripts/backfill_owner_name.py). Values:
+    'license' | 'about_page' | 'none'. Idempotent."""
+    own = conn is None
+    conn = conn or get_connection()
+    try:
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(maps_companies)")}
+        for col, coltype in OWNER_NAME_SOURCE_COLUMNS.items():
+            if col not in existing:
+                conn.execute(f"ALTER TABLE maps_companies ADD COLUMN {col} {coltype}")
+        conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
 def get_connection(db_path: Path | str | None = None) -> sqlite3.Connection:
     path = Path(db_path) if db_path else config.DB_PATH
     path.parent.mkdir(parents=True, exist_ok=True)

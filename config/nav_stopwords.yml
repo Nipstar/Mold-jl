@@ -1,0 +1,58 @@
+# Stop-list of nav/menu/heading terms that must never be accepted as a person name.
+# Matched case-insensitively, token-by-token (after splitting on whitespace).
+nav_words:
+  - tenant
+  - landlord
+  - should
+  - know
+  - resources
+  - more
+  - home
+  - about
+  - contact
+  - services
+  - blog
+  - faq
+  - menu
+  - login
+  - sign
+  - in
+  - get
+  - started
+  - book
+  - now
+  - call
+  - learn
+  - read
+  - us
+  - today
+  - team
+  - staff
+  - careers
+  - reviews
+  - gallery
+  - portfolio
+  - pricing
+  - quote
+  - schedule
+  - appointment
+
+# Full phrases explicitly denied even if individual tokens might look name-like.
+nav_phrases:
+  - "Tenant Landlord"
+  - "Should Know"
+  - "Resources More"
+  - "Home"
+  - "About"
+  - "Contact"
+  - "Services"
+  - "Blog"
+  - "FAQ"
+  - "Menu"
+  - "Login"
+  - "Sign In"
+  - "Get Started"
+  - "Book Now"
+  - "Call Now"
+  - "Learn More"
+  - "Read More"
